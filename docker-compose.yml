@@ -1,0 +1,67 @@
+services:
+  # PostgreSQL
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.postgres         # ← только POSTGRES_ переменные
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  # Redis (broker + backend для Celery)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # Django‑приложение (web)
+  web:
+    build: .
+    env_file:
+      - .env.django
+    environment:
+      DB_HOST: db
+      DJANGO_RUNSERVER: "1"   # 1 →  в dev; 0 → gunicorn
+    command: >
+      sh -c "
+        python manage.py wait_for_db &&
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    volumes:
+      - .:/app:cached
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Celery worker
+  worker:
+    build: .
+    env_file:
+      - .env.django
+    environment:
+      DB_HOST: db
+    command: celery -A SmartCollect_task worker -l info
+    volumes:
+      - .:/app:cached
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,404 @@
+Redis:
+sudo systemctl status redis-server     Проверка статуса сервера
+sudo systemctl start redis-server      Запуск сервера redis
+redis-cli ping                         Проверить работу redis
+-------------------------------------------------------------------------
+Подготовка нового сервера для деплоя:   (SSH бери зразу со своей ubuntu) (Ubuntu 22.04 LST 64-bit не требует SSH, подключение по паролю)
+
+# Обновляем окружение
+sudo apt update
+
+# установка git
+sudo apt install -y git
+# проверка версии git
+git --version
+
+# удаление старого докера (если есть)
+sudo apt remove docker docker-engine docker.io containerd runc
+
+# установка необходимые пакеты
+sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+sudo apt install -y apt-transport-https ca-certificates curl software-properties-common gnupg
+
+# добавление официального GPG-ключа Docker
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Добавляем репозиторий Docker
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Устанавливаем Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io
+
+# Проверяем
+sudo systemctl status docker
+
+# Если докер не запущен
+sudo systemctl start docker
+
+# Можно посмотреть версию для проверки
+docker --version
+
+# Скачиваем актуальную версию Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+# Делаем файл исполняемым
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Проверяем установку
+docker-compose --version
+
+
+-------------------------------------------------------------------------------------------------------------
+Создание SSH для Git  (???????)
+
+# Гененрируем ключ на сервере (оставляю дирректорию по умочанию и создаю пароль(для деплоя без пароля))
+ssh-keygen -t ed25519 -C "selectel@nightsova.ru"
+
+# Создаем агента (если его еще нет)
+eval "$(ssh-agent -s)"
+
+
+# Добавляем ключ в агента
+ssh-add ~/.ssh/id_ed25519
+
+# Смотрим ключ для копирования
+cat ~/.ssh/id_ed25519.pub
+
+# Добавить ключ в настройки GitLab (https://gitlab.com/-/user_settings/ssh_keys)
+
+# Берем ключ для переменной SSH_PRIVATE_KEY
+nano ~/.ssh/id_ed25519
+
+# Проверить подключение
+ssh -T git@gitlab.com
+
+# Посмотреть ssh ключи на сервере
+ls -al ~/.ssh
+
+# Посмотреть ключи (в ????)
+nano ~/.ssh/authorized_keys
+
+# Убедись что ключ с таким именем есть
+ls -l ~/.ssh/id_ed25519*
+
+# Добавь новый публичный ключ в authorized_keys
+cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+
+# Убедись, что ключ добавлен
+tail ~/.ssh/authorized_keys
+
+# Просетстировать в ручную работу ключа
+ssh -i ~/.ssh/id_ed25519 artem@87.228.90.144
+
+`````````````````````
+# Удаление ключа из
+nano ~/.ssh/authorized_keys   И стереть ненужный ключ
+
+# Удаление ключа 
+rm ~/.ssh/id_ed25519 ~/.ssh/id_ed25519.pub
+
+---------------------------------------------------------------------------------------------------------------------
+Подготовка GitLab Runner (для сервера деплоя)
+
+# Генерируем SSH ключ для gitLab на сервере деплоя
+ssh-keygen -t ed25519 -C "gitlab-ci" -f ~/.ssh/gitlab-ci -N ""
+
+# Копируем его на сервер (сохраняем в файл)
+ssh-copy-id -i ~/.ssh/gitlab-ci.pub artem@87.228.90.144
+
+# Проверяем что доступ по паролю работает (вводим команду с другого сервера)
+ssh -i ~/.ssh/gitlab-ci artem@87.228.90.144
+
+# Вносим переменные в Settings -> CI/CD -> Variables  (параметры сервера деплоя)
+SSH_PRIVATE_KEY     :    нужно взять ключ из nano ~/.ssh/gitlab-ci и вводить его построчно без пробелов и переносов (поставить отметки Masked и Protected)
+DEPLOY_USER         :    artem
+DEPLOY_HOST         :    87.228.90.144
+DEPLOY_PATH         :    /home/artem/cat_project (путь, куда встанет api)
+
+# Установка GitLab Runner (ssh для деплоя)
+curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
+sudo apt install gitlab-runner
+
+# Выполнить на сервере раннера команду
+sudo gitlab-runner register
+```
+Затем ввести url (поумолчанию https://gitlab.com/)
+Токен (из раннера в GitLab)
+executor(ставим ssh или shell)
+SSH server address (87.228.90.144 я указал адрес сервера деплоя)
+SSH server port (оставил 22)
+SSH user (artem  хз нужен ли уже существующий или создается новый)
+SSH password  (придумал пароль)
+SSH identity file (/home/artem/.ssh/gitlab-ci) владельцем бедет artem(с него создается)
+Конфигурация сохранится сюда /etc/gitlab-runner/config.toml  (войти в него:  sudo nano /etc/gitlab-runner/config.toml)
+```
+
+# Проверить работоспособность ранера
+sudo gitlab-runner verify
+sudo gitlab-runner status
+
+# В первый раз ставим проект на сервер вручную
+
+# Git уже установлен, клонируем репозиторий (Попросит пароль от ключа ssh)
+git clone git@gitlab.com:raudsepartem/cat_project.git
+(git pull origin main  подтянуть в сервер актуальный код, выполнять в папке проекта, гле есть gitы)
+
+# Входим в проект
+cd cat_project
+
+# Билдим docker???
+docker-compose up --build  
+(docker-compose up (для повторных запусков))
+(docker-compose down -v (чтобы удалить сбилженый докер))
+
+-------------------------------------------------------------------------------------------------------------------------
+Удалить runner
+sudo gitlab-runner stop
+sudo gitlab-runner uninstall
+
+---------------------------------------------------------------------------------------------------------------------
+Подготовка GitLab Runner через Docker (для билда и тестов)
+
+# Ставим докер
+docker run -d --name gitlab-runner --restart always \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:latest
+
+#
+docker run --rm -it \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  gitlab/gitlab-runner:alpine register
+
+Указываем
+URL: https://gitlab.com/
+Token:
+Executor: docker
+Image: docker:latest
+
+# Меняем конфиг, чтобы исправить ошибку
+cd /srv/gitlab-runner/config
+nano config.toml
+
+ Меняем
+ privileged = false
+ на
+ privileged = true
+
+# Раннер появится в Gitlab как активный (зеленая лампочка)
+
+# Проверить работоспособность
+docker ps
+gitlab-runner verify
+
+# Если ранер не активен, перезапустить
+docker restart gitlab-runner
+gitlab-runner verify
+-----------------------------------------------------------------------------------------------------------------------------
+Правильно работать не через рут, а через юзера
+
+# Создать юзера, чтобы не работать с рута
+adduser artem    (придумай пароль)
+(sudo userdel artem (удалить пользователя))
+(sudo userdel -r artem (удаление пользователя вместе с домашней директорией и почтой))
+(sudo userdel -f artem(удаление пользователя, если он в системе))
+
+# Добавляем юзера в группу sudo 
+adduser artem sudo
+
+# Заходим в конфигуратор SSH и разрешаем вход на сервер по паролю
+sudo nano /etc/ssh/sshd_config
+   если в нем нет строки    PasswordAuthentication yes     добавляем ее для доступа по паролю
+
+# Добавляем юзера в группу докера (только того, которому положен доступ)
+adduser artem docker
+sudo usermod -aG docker artem
+
+# Теперь можно заходить на сервер не с рута, а со своего пользователя с паролем (или не с паролем, не разобрался)
+
+# Проверить доступ к докеру с нового юзера (должна появиться хотя бы шапка таблицы)
+docker ps
+
+# Остановить докер компоуз на сервере с приложением
+cd cat_project
+docker-compose down
+
+# Запустить его снова на сервере
+docker-compose up -d
+---------------------------------------------------------------------------------------------------------------------------
+Настройка своего GitLab сервера (через докер):
+
+# Ставим на сервер докер и компоуз
+
+# Можно привязать ip сервера к своему доменному имени
+- заходим в свой хостинг
+- На домене выбираем что-то типа   "Управление DNS"
+- Можем добавить подгруппу (gitlab.nightsova.ru)
+- Добавляем DNS (в Name: выбираем gitlab, а в IPv4 вставляем ip нашего сервера)
+- Теперь сервер доступен не только по ip, но и через gitlab.nightsova.ru
+
+# Создаем в корне сервера папку для настроек docker-compose
+mkdir docker-gitlab   (название например)
+cd docker-gitlab
+nano docker-compose.yml
+- вставляем в файл настройки из офиц доков (https://docs.gitlab.com/install/docker/installation/#install-gitlab-by-using-docker-compose)
+измененные параметры смотри ниже
+версию нужно искать тут:  https://hub.docker.com/r/gitlab/gitlab-ce/tags/
+- hostname: 'gitlab.example.com'       меняем на      hostname: 'gitlab.nightsova.ru'  (наверно можно оставить ip сервера)
+- external_url 'https://gitlab.example.com'   меняем на         external_url 'https://gitlab.nightsova.ru'
+- возможно понадобится перенастроить порты, если они на сервере уже заняты
+- '22:22' надо ли менять например на   - '2422:22'    это вроде порт ssh
+- .env создать в этой же директории (nano .env) и прописать в него:
+GITLAB_HOME=/home/gitlab/docker-gitlab                      (pwd      узнать адрес директории в которой находимся) /root/docker-gitlab
+GITLAB_ROOT_PASSWORD=Fnh6k3OcEj2g7U9AHkcrnSDovcdfKte        (обязательно должен быть сложным)
+
+# Создаем докер гитлаба????
+- docker-compose up             (ждем, после завершения будут идти логи)
+- останавливаем  ???
+- docker compose up -d        (перезапускаем без логов)
+(docker logs gitlab(посмотреть логи))
+(docker ps (посмотреть статус контейнера))
+
+# Теперь при переходе на gitlab.nightsova.ru мы видим наш gitlab
+gitlab работает и новые пользователи могут в нем регистрироваться
+В разделе Admin area - Users можно видеть новых пользователей и апрувить их на наш  gitlab вручную
+Можно настроить SMTP сервер в своем gitlab для регистрации через почту
+
+# Устанавливаем GitLab Runner (на остановленом сервере)
+
+# Вводим команду установки (из https://docs.gitlab.com/runner/install/docker/)
+docker run -d --name gitlab-runner --restart always \
+  -v /srv/gitlab-runner/config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:latest
+
+# Проверяем статус   (должны увидеть 2 контейнера: gitlab-ce и gitlab-runner)
+docker ps
+
+# GitLab вроде как готов!!!
+---
+# Снижаем нагрузку на оперативу (для микро сервера)
+# Входим в конфигуратор
+- vi docker-gitlab/config/gitlab.rb
+
+# Раскоменчиваем и редактируем строки
+```
+puma['worker_process'] = 2
+puma['min_threads'] = 1
+puma['max_threads'] = 4
+
+sidekiq['concurrency'] = 5
+```
+
+# Так же делаем файл подкачки на 4G (перенести часть нагруки с оперативы на ssd) пишем в корне сервера
+- sudo fallocate -l 4G /swapfile
+- sudo cmod 600 /swapfile
+- sudo mkswap /swapfile
+- sudo swapon /swapfile
+- sudo swapon --show  (можно посмотреть его параметры)
+
+# Реконфигурируем
+- docker exec -it gitlab gitlab-ctl reconfigure
+
+# Запускаем сервер (возможно, можно не останавливать сервер)
+---
+# Обновляем GitLab (ТОЛЬКО ПОСЛЕ СОЗДАНИЯ БЭКАПОВ)
+- cd docker-gitlab
+
+# Проверяем контейнеры (вроде он только один)
+- docker compose ps
+
+# Удаляем контейнер GitLabа (data волжна сохраниться на ssd, но не факт, я не уверен)
+- docker compose down
+
+# Переписываем версию GitLab  в файле docker-compose.yml
+
+
+# Снова ставим GitLub с Docker Hub
+- docker compose up -d
+
+# Смотрим версии образов на сервере
+- docker images
+
+# Выбираем (запоминаем) нужный (например: 17.2.0-ce.0), смотрим его IMAGE ID (7d03b40e1b0e), чтобы указать в команде. Через пробел можно указать несколько версий (- docker rmi 7d03b40e1b0e 8s6dggds2dsfg)
+- docker rmi 7d03b40e1b0e
+
+# Старый образ удален
+--------------------------------------------------------------------------------------------------------------------------------
+Очистить сервер от предыдущих(неудачных) пайплайнов
+
+# Посмотреть параметры сервера, а именно  /sev/sda1
+df -h
+
+# Удаление всех неиспользуемых объектов (контейнеры, сети, образы без тега, кэш)
+docker system prune -f
+
+# Если хотите ещё больше освободить место — удаление ВСЕХ неиспользуемых образов и данных
+docker system prune -a -f --volumes
+
+# Перезапустить докер и ранер
+systemctl restart docker
+systemctl restart gitlab-runner
+
+#
+
+
+#
+
+
+#
+
+--------------------------------------------------------------------------------------
+
+
+
+
+cd ~/.ssh   - вход в паку .ssh
+
+
+
+
+
+
+
+
+
+--------------------------------------------------------------------------
+Базовый docker-compose.yml для СЕРВЕРА GitLab из документации
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:18.0.0-ce.0
+    container_name: gitlab
+    restart: always
+    hostname: '87.228.90.129'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        # Add any other gitlab.rb configuration here, each on its own line
+        external_url 'https://87.228.90.129'
+    ports:
+      - '80:80'
+      - '443:443'
+      - '2422:22'
+    volumes:
+      - '$GITLAB_HOME/config:/etc/gitlab'
+      - '$GITLAB_HOME/logs:/var/log/gitlab'
+      - '$GITLAB_HOME/data:/var/opt/gitlab'
+    shm_size: '256m'
+    env_file:
+      - ".env"
+
+---------------------------------------------------------------------------
+Развертка сервера SSH:
+
+sudo apt update
+sudo apt install openssh-server
+
+sudo systemctl status ssh            Проверка статуса сервера
+
+sudo systemctl start ssh            Если сервер не запущен
+sudo systemctl enable ssh           # для автозапуска при загрузке системы
+
+Мой сервер:
+ssh artem@85.198.104.1
+----------------------------------------------------------------------------

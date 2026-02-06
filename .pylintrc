@@ -1,0 +1,55 @@
+[MASTER]
+load-plugins = pylint_django
+# Список каталогов, которые нужно игнорировать при анализе.
+# В тестах много противоречий форматирования
+ignore-paths=^tests/.*,^payouts/tests/.*,.*migrations.*
+
+
+[MESSAGES CONTROL]
+disable=
+    C0103,  # invalid-name
+    C0301,  # line-to-long
+    R0801,
+
+[TOOL:pylint]
+django-settings-module = SmartCollect_task.settings
+
+[REPORTS]
+# Отображать ли отчет о времени выполнения.
+reports=no
+
+# Отображать ли детализированный отчет о сообщениях.
+score=yes
+
+output-format=colorized
+
+
+[DESIGN]
+# Максимальное количество аргументов в функции.
+max-args=6
+
+# Максимальное количество местных переменных в функции.
+max-locals=25
+
+# Максимальное количество ветвлений в функции.
+max-branches=15
+
+# Максимальное количество операторов в функции.
+max-statements=50
+
+# Минимальное количество публичных методов в классе.
+min-public-methods=0
+
+# Максимальное количество публичных методов в классе.
+max-public-methods=50
+
+# Минимальный допустимый средний показатель сложности по Маккейбу.
+min-similarity-lines=4 # Уменьшено для уменьшения ложных срабатываний на шаблонных обработчиках
+
+
+[TYPECHECK]
+# Имена, которые pylint будет считать определёнными в глобальной области,
+# В вашем случае, 'wfile', 'rfile', 'headers', 'send_response', 'end_headers' - это атрибуты BaseHTTPRequestHandler.
+ignored-classes=SQLObject
+ignored-argument-names=_.*
+generated-members=wfile,rfile,headers,send_response,end_headers,path,send_header
