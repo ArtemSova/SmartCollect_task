@@ -60,7 +60,7 @@ lint:
     - poetry run pylint ./payouts
     - echo "Запуск форматирования black (проверка)..."
     - poetry run black --check ./payouts
-  allow_failure: true  # Линтинг может "падать", но не прерывает пайплайн
+  allow_failure: true
   tags:
     - docker
 
