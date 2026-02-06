@@ -1,0 +1,85 @@
+stages:
+  - lint
+  - test
+
+variables:
+  # Общие переменные для всех этапов
+  POSTGRES_DB: SmartCollect_db
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_HOST_AUTH_METHOD: trust
+
+  # Переменные Django
+  SECRET_KEY: "django-insecure-test-key-for-ci-$CI_PIPELINE_ID"
+  DEBUG: "False"
+  ALLOWED_HOSTS: "localhost,127.0.0.1"
+  DB_NAME: "SmartCollect_db"
+  DB_USER: "postgres"
+  DB_PASSWORD: "postgres"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+
+# Кеширование для ускорения сборок
+cache:
+  paths:
+    - .pip-cache/
+    - .poetry-cache/
+
+# Используем образы с Python
+image: python:3.13-slim
+
+# Сервисы, необходимые для тестирования
+services:
+  - postgres:16-alpine
+  - redis:7-alpine
+
+# Шаблон для настройки Python (добавляем установку postgresql-client)
+.setup_python: &setup_python |
+  python --version
+  pip --version
+  # Устанавливаем утилиты для работы с БД
+  apt-get update && apt-get install -y postgresql-client redis-tools
+  # Устанавливаем Poetry
+  pip install poetry
+  poetry --version
+  # Настраиваем Poetry для создания виртуального окружения в проекте
+  poetry config virtualenvs.in-project true
+  # Устанавливаем зависимости
+  poetry install --no-interaction
+
+before_script:
+  - *setup_python
+  - source .venv/bin/activate
+
+lint:
+  stage: lint
+  script:
+    - echo "Запуск линтера pylint..."
+    - poetry run pylint ./payouts
+    - echo "Запуск форматирования black (проверка)..."
+    - poetry run black --check ./payouts
+  allow_failure: true  # Линтинг может "падать", но не прерывает пайплайн
+  tags:
+    - docker
+
+test:
+  stage: test
+  script:
+    - echo "Ожидание готовности PostgreSQL..."
+    - timeout 60s bash -c 'until pg_isready -h postgres -U postgres; do sleep 2; done'
+    - echo "Ожидание готовности Redis..."
+    - timeout 30s bash -c 'until redis-cli -h redis ping | grep -q PONG; do sleep 2; done'
+    - echo "Применение миграций..."
+    - poetry run python manage.py migrate
+    - echo "Запуск тестов..."
+    - poetry run python manage.py test
+  artifacts:
+    when: always
+    paths:
+      - test-reports/
+    reports:
+      junit: test-reports/junit.xml
+  tags:
+    - docker
