@@ -20,7 +20,7 @@ help:                       ## help – показать список досту
 	@echo "  make shell          – открыть Django shell"
 	@echo "  make lint           – pylint для приложения payouts"
 	@echo "  make format         – black для приложения payouts"
-	@echo "  make clean          – удалить __pycache__, миграции, SQLite"
+	@echo "  make clean          – удалить __pycache__, миграции и т.п."
 	@echo ""
 	@echo "=== Docker (контейнер) команды ==="
 	@echo "  make docker-build   – собрать Docker‑образы"
